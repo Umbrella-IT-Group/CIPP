@@ -519,6 +519,10 @@ function Get-GraphRequestList {
                                     if ($null -eq $ResultProperties['Tenant']) { $ResultProperties.Add([psnoteproperty]::new('Tenant', $TenantFilter)) }
                                     if ($null -eq $ResultProperties['CippStatus']) { $ResultProperties.Add([psnoteproperty]::new('CippStatus', 'Good')) }
                                     $Result
+                                } elseif ($Result -is [string] -or $Result -is [System.ValueType]) {
+                                    # A bare value (a Graph function returning Edm.String, the text of /$count) has no properties
+                                    # for Select-Object to keep: a string would become its Length and a number or boolean nothing.
+                                    [PSCustomObject]@{ value = $Result.PSObject.BaseObject; Tenant = $TenantFilter; CippStatus = 'Good' }
                                 } else {
                                     $Result | Select-Object *, @{n = 'Tenant'; e = { $TenantFilter } }, @{n = 'CippStatus'; e = { 'Good' } }
                                 }

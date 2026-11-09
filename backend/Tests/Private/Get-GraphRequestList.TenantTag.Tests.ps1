@@ -1,7 +1,9 @@
 # Single-tenant reads tag each Graph record with Tenant and CippStatus in place instead of copying it.
-# Anything that is not a plain record (the manual-pagination nextLink marker, string values) keeps the
-# Select-Object shape callers already read. -JsonPages (the AllTenants queue task) does the same one Graph page at a
-# time and emits each page as a JSON array, looking each reverse-lookup tenant up once however many pages it is on.
+# Anything else that is not a plain record (the manual-pagination nextLink marker) keeps the Select-Object shape
+# callers already read. A bare string, number or boolean (a Graph function such as getOmaSettingPlainTextValue, or the
+# text of /users/$count) has no properties for Select-Object to keep, so it is tagged as the value of a record.
+# -JsonPages (the AllTenants queue task) does the same one Graph page at a time and emits each page as a JSON array,
+# looking each reverse-lookup tenant up once however many pages it is on.
 
 BeforeAll {
     $RepoRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSCommandPath))
@@ -45,6 +47,79 @@ Describe 'Get-GraphRequestList tenant tagging' {
         $Result.Count | Should -Be 2
         $Result[1].nextLink | Should -Be 'https://graph.microsoft.com/beta/users?$skiptoken=x'
         $Result[1].Tenant | Should -Be 'contoso.com'
+    }
+}
+
+Describe 'Get-GraphRequestList bare Graph values' {
+    It 'keeps a string result as the value of a tagged record, not its length' -ForEach @(
+        @{ Text = 'decrypted text' }
+        @{ Text = '12' }
+        @{ Text = '' }
+    ) {
+        # Graph answers a function that returns Edm.String with { "value": "..." }, which New-GraphGetRequest unwraps
+        # to the bare string; /users/$count answers with the number as text.
+        Mock -CommandName New-GraphGetRequest -MockWith { $Text }
+
+        $Result = @(Get-GraphRequestList -TenantFilter 'contoso.com' -Endpoint 'users/$count' -SkipCache)
+
+        $Result.Count | Should -Be 1
+        $Result[0].PSObject.Properties.Name | Should -Be @('value', 'Tenant', 'CippStatus')
+        $Result[0].value | Should -BeExactly $Text
+        $Result[0].Tenant | Should -Be 'contoso.com'
+        $Result[0].CippStatus | Should -Be 'Good'
+    }
+
+    It 'keeps a number or boolean result as the value of a tagged record' -ForEach @(
+        @{ Scalar = 5 }
+        @{ Scalar = 0 }
+        @{ Scalar = 1.5 }
+        @{ Scalar = $true }
+        @{ Scalar = $false }
+    ) {
+        Mock -CommandName New-GraphGetRequest -MockWith { $Scalar }
+
+        $Result = @(Get-GraphRequestList -TenantFilter 'contoso.com' -Endpoint 'reports/someFunction()' -SkipCache)
+
+        $Result.Count | Should -Be 1
+        $Result[0].PSObject.Properties.Name | Should -Be @('value', 'Tenant', 'CippStatus')
+        $Result[0].value | Should -BeExactly $Scalar
+        $Result[0].value | Should -BeOfType ($Scalar.GetType())
+        $Result[0].Tenant | Should -Be 'contoso.com'
+    }
+
+    It 'tags every item of a collection of strings' {
+        Mock -CommandName New-GraphGetRequest -MockWith { 'alpha'; 'beta' }
+
+        $Result = @(Get-GraphRequestList -TenantFilter 'contoso.com' -Endpoint 'someCollectionFunction()' -SkipCache)
+
+        $Result.Count | Should -Be 2
+        $Result.value | Should -Be @('alpha', 'beta')
+        $Result.Tenant | Sort-Object -Unique | Should -Be 'contoso.com'
+    }
+
+    It 'keeps a bare value next to the nextLink marker' {
+        Mock -CommandName New-GraphGetRequest -MockWith { 'alpha'; @{ nextLink = 'https://graph.microsoft.com/beta/x?$skiptoken=y' } }
+
+        $Result = @(Get-GraphRequestList -TenantFilter 'contoso.com' -Endpoint 'x' -ManualPagination)
+
+        $Result.Count | Should -Be 2
+        $Result[0].value | Should -Be 'alpha'
+        $Result[1].nextLink | Should -Be 'https://graph.microsoft.com/beta/x?$skiptoken=y'
+    }
+
+    It 'emits a bare value page as a tagged JSON record with -JsonPages' {
+        Mock -CommandName New-GraphGetRequest -MockWith {
+            [PSCustomObject]@{ '@odata.context' = 'https://graph.microsoft.com/beta/$metadata#Edm.String'; value = 'decrypted text' }
+        }
+
+        $Pages = @(Get-GraphRequestList -TenantFilter 'contoso.com' -Endpoint 'someStringFunction()' -SkipCache -JsonPages)
+
+        $Pages.Count | Should -Be 1
+        $Records = @($Pages[0] | ConvertFrom-Json)
+        $Records.Count | Should -Be 1
+        $Records[0].value | Should -Be 'decrypted text'
+        $Records[0].Tenant | Should -Be 'contoso.com'
+        $Records[0].PSObject.Properties['Length'] | Should -BeNullOrEmpty
     }
 }
 
