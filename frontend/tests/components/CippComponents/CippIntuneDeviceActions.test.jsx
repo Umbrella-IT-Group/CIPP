@@ -82,3 +82,20 @@ describe('getIntuneDeviceActions wipe/reset consolidation', () => {
     expect(pureOsConditionActions).toEqual([])
   })
 })
+
+describe('getIntuneDeviceActions primary user actions', () => {
+  it('declares Remove Primary User as an ExecDeviceAction with the literal removePrimaryUser key and no fields', () => {
+    const removePrimaryUser = getActions().find((action) => action.label === 'Remove Primary User')
+    expect(removePrimaryUser).toBeDefined()
+    expect(removePrimaryUser.type).toBe('POST')
+    expect(removePrimaryUser.url).toBe('/api/ExecDeviceAction')
+    // The leading ! keeps the dialog from resolving the action key as a row property.
+    expect(removePrimaryUser.data).toEqual({ GUID: 'id', Action: '!removePrimaryUser' })
+    expect(removePrimaryUser.fields).toBeUndefined()
+  })
+
+  it('lists Remove Primary User directly after Change Primary User', () => {
+    const labels = getActions().map((action) => action.label)
+    expect(labels.indexOf('Remove Primary User')).toBe(labels.indexOf('Change Primary User') + 1)
+  })
+})

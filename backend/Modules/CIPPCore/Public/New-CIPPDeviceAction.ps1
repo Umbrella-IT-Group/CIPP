@@ -19,6 +19,11 @@ function New-CIPPDeviceAction {
             $regex = "(?<=\(')([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})(?='|\))"
             $PrimaryUser = $ActionBody | Select-String -Pattern $regex -AllMatches | Select-Object -ExpandProperty Matches | Select-Object -ExpandProperty Value
             $Result = "Changed primary user on device $DeviceFilter to $PrimaryUser"
+        } elseif ($Action -eq 'removePrimaryUser') {
+            # Intune sets the primary user to whoever enrolls the device, which on a shared PC is often a
+            # tech or service account. DELETE on users/$ref (no body, no user id) leaves the device ownerless.
+            $null = New-GraphPOSTRequest -uri "https://graph.microsoft.com/beta/deviceManagement/managedDevices('$DeviceFilter')/users/`$ref" -type DELETE -tenantid $TenantFilter
+            $Result = "Removed primary user from device $DeviceFilter"
         } else {
             $null = New-GraphPOSTRequest -uri "https://graph.microsoft.com/beta/deviceManagement/managedDevices('$DeviceFilter')/$($Action)" -type POST -tenantid $TenantFilter -body $ActionBody
             $Result = "Queued $Action on $DeviceFilter"

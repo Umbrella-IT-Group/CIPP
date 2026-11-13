@@ -38,6 +38,13 @@ function Invoke-ExecDeviceAction {
                 Write-Host "ActionBody: $ActionBody"
                 break
             }
+            'removePrimaryUser' {
+                # The Graph DELETE on managedDevices/{id}/users/$ref takes no body and no user id, and
+                # clears the device's one primary user. Without this case the default branch would
+                # serialize the whole request body into a call that does not read one.
+                $ActionBody = $null
+                break
+            }
             'wipe' {
                 # Graph rejects/ignores unknown wipe parameters and an empty macOsUnlockCode,
                 # so forward only the supported ones instead of the raw request body

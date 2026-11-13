@@ -62,6 +62,18 @@ export const getIntuneDeviceActions = ({ tenantFilter } = {}) => [
     confirmText: 'Select the User to set as the primary user for [deviceName]',
   },
   {
+    label: 'Remove Primary User',
+    type: 'POST',
+    icon: <CippIcons.PersonRemove />,
+    url: '/api/ExecDeviceAction',
+    data: {
+      GUID: 'id',
+      Action: '!removePrimaryUser',
+    },
+    confirmText:
+      'Are you sure you want to remove the primary user from [deviceName]? The device will have no primary user until one is set again.',
+  },
+  {
     label: 'Add to Group',
     type: 'POST',
     icon: <CippIcons.GroupAdd />,
